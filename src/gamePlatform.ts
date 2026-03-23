@@ -25,6 +25,26 @@ export interface SubmitGameResultOutput {
     error?: PostgrestError | Error | null;
 }
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+export interface SubmitMatchMovementInput {
+    matchId: string;
+    playerId: string;
+    moveData: JsonValue;
+    gameId?: string | null;
+    matchInfo?: Record<string, JsonValue> | null;
+    serverTimestamp?: string;
+    movementId?: string;
+    tableName?: string;
+}
+
+export interface SubmitMatchMovementOutput {
+    ok: boolean;
+    table: string;
+    error?: PostgrestError | Error | null;
+}
+
 const SUBMITTED_RESULTS_KEY = 'pilot_game_submitted_results_v1';
 const submittedResultsMemory = new Set<string>();
 const inFlightRequests = new Set<string>();
@@ -88,6 +108,38 @@ function isConflictError(error: PostgrestError): boolean {
         error.code === '409' ||
         /conflict|duplicate|already/i.test(error.message ?? '')
     );
+}
+
+function buildMoveDataWithContext(input: SubmitMatchMovementInput): JsonValue {
+    const hasContext = Boolean(input.gameId || input.matchInfo);
+    if (!hasContext) {
+        return input.moveData;
+    }
+
+    const contextPayload: Record<string, JsonValue> = {};
+    if (input.gameId) {
+        contextPayload.game_id = input.gameId;
+    }
+
+    if (input.matchInfo) {
+        contextPayload.match_info = input.matchInfo;
+    }
+
+    if (
+        input.moveData !== null &&
+        typeof input.moveData === 'object' &&
+        !Array.isArray(input.moveData)
+    ) {
+        return {
+            ...(input.moveData as Record<string, JsonValue>),
+            ...contextPayload
+        };
+    }
+
+    return {
+        move: input.moveData,
+        ...contextPayload
+    };
 }
 
 export function getLaunchContextFromUrl(search: string = window.location.search): LaunchContext {
@@ -254,4 +306,46 @@ export async function submitGameResult(input: SubmitGameResultInput): Promise<Su
     } finally {
         inFlightRequests.delete(resultKey);
     }
+}
+
+export async function submitMatchMovement(
+    input: SubmitMatchMovementInput
+): Promise<SubmitMatchMovementOutput> {
+    if (!input.matchId || !input.playerId) {
+        return {
+            ok: false,
+            table: input.tableName ?? 'match_movements',
+            error: new Error('matchId y playerId son obligatorios')
+        };
+    }
+
+    const tableName = input.tableName ?? 'match_movements';
+    const payload: Record<string, unknown> = {
+        match_id: input.matchId,
+        player_id: input.playerId,
+        move_data: buildMoveDataWithContext(input)
+    };
+
+    if (input.serverTimestamp) {
+        payload.server_timestamp = input.serverTimestamp;
+    }
+
+    if (input.movementId) {
+        payload.id = input.movementId;
+    }
+
+    const { error } = await supabase.from(tableName).insert(payload);
+
+    if (error) {
+        return {
+            ok: false,
+            table: tableName,
+            error
+        };
+    }
+
+    return {
+        ok: true,
+        table: tableName
+    };
 }

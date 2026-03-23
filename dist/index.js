@@ -22,6 +22,7 @@ var index_exports = {};
 __export(index_exports, {
   getLaunchContextFromUrl: () => getLaunchContextFromUrl,
   submitGameResult: () => submitGameResult,
+  submitMatchMovement: () => submitMatchMovement,
   supabase: () => supabase
 });
 module.exports = __toCommonJS(index_exports);
@@ -80,6 +81,29 @@ function getFirstParam(params, keys) {
 }
 function isConflictError(error) {
   return error.code === "23505" || error.code === "409" || /conflict|duplicate|already/i.test(error.message ?? "");
+}
+function buildMoveDataWithContext(input) {
+  const hasContext = Boolean(input.gameId || input.matchInfo);
+  if (!hasContext) {
+    return input.moveData;
+  }
+  const contextPayload = {};
+  if (input.gameId) {
+    contextPayload.game_id = input.gameId;
+  }
+  if (input.matchInfo) {
+    contextPayload.match_info = input.matchInfo;
+  }
+  if (input.moveData !== null && typeof input.moveData === "object" && !Array.isArray(input.moveData)) {
+    return {
+      ...input.moveData,
+      ...contextPayload
+    };
+  }
+  return {
+    move: input.moveData,
+    ...contextPayload
+  };
 }
 function getLaunchContextFromUrl(search = window.location.search) {
   const params = new URLSearchParams(search);
@@ -224,9 +248,43 @@ async function submitGameResult(input) {
     inFlightRequests.delete(resultKey);
   }
 }
+async function submitMatchMovement(input) {
+  if (!input.matchId || !input.playerId) {
+    return {
+      ok: false,
+      table: input.tableName ?? "match_movements",
+      error: new Error("matchId y playerId son obligatorios")
+    };
+  }
+  const tableName = input.tableName ?? "match_movements";
+  const payload = {
+    match_id: input.matchId,
+    player_id: input.playerId,
+    move_data: buildMoveDataWithContext(input)
+  };
+  if (input.serverTimestamp) {
+    payload.server_timestamp = input.serverTimestamp;
+  }
+  if (input.movementId) {
+    payload.id = input.movementId;
+  }
+  const { error } = await supabase.from(tableName).insert(payload);
+  if (error) {
+    return {
+      ok: false,
+      table: tableName,
+      error
+    };
+  }
+  return {
+    ok: true,
+    table: tableName
+  };
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   getLaunchContextFromUrl,
   submitGameResult,
+  submitMatchMovement,
   supabase
 });
