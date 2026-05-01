@@ -20,12 +20,18 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
+  createMatch: () => createMatch,
+  endMatch: () => endMatch,
   getLaunchContextFromUrl: () => getLaunchContextFromUrl,
+  submitEloResult: () => submitEloResult,
   submitGameResult: () => submitGameResult,
   submitMatchMovement: () => submitMatchMovement,
   supabase: () => supabase
 });
 module.exports = __toCommonJS(index_exports);
+
+// src/gamePlatform.ts
+var import_uuid = require("uuid");
 
 // src/supabase.ts
 var import_supabase_js = require("@supabase/supabase-js");
@@ -34,40 +40,23 @@ var supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIs
 var supabase = (0, import_supabase_js.createClient)(supabaseUrl, supabaseKey);
 
 // src/gamePlatform.ts
-var SUBMITTED_RESULTS_KEY = "pilot_game_submitted_results_v1";
-var submittedResultsMemory = /* @__PURE__ */ new Set();
-var inFlightRequests = /* @__PURE__ */ new Set();
-function getResultKey(matchId, playerId) {
-  return `${matchId}:${playerId}`;
-}
-function getSubmittedResults() {
+async function createMatch(input) {
   try {
-    if (typeof window === "undefined" || !window.sessionStorage) {
-      return new Set(submittedResultsMemory);
-    }
-    const raw = window.sessionStorage.getItem(SUBMITTED_RESULTS_KEY);
-    if (!raw) {
-      return new Set(submittedResultsMemory);
-    }
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return new Set(parsed.filter((item) => typeof item === "string"));
-    }
-    return new Set(submittedResultsMemory);
-  } catch {
-    return new Set(submittedResultsMemory);
-  }
-}
-function markResultSubmitted(key) {
-  submittedResultsMemory.add(key);
-  try {
-    if (typeof window === "undefined" || !window.sessionStorage) {
-      return;
-    }
-    const current = getSubmittedResults();
-    current.add(key);
-    window.sessionStorage.setItem(SUBMITTED_RESULTS_KEY, JSON.stringify(Array.from(current)));
-  } catch {
+    const matchId = (0, import_uuid.v4)();
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const { error } = await supabase.from("matches").insert({
+      id: matchId,
+      game_id: input.gameId,
+      player_1: input.player1,
+      player_2: input.player2,
+      status: input.status ?? "pending",
+      created_at: now
+      // Eliminado updated_at para evitar errores si no existe
+    });
+    if (error) return { ok: false, error };
+    return { ok: true, matchId };
+  } catch (err) {
+    return { ok: false, error: err };
   }
 }
 function getFirstParam(params, keys) {
@@ -78,9 +67,6 @@ function getFirstParam(params, keys) {
     }
   }
   return null;
-}
-function isConflictError(error) {
-  return error.code === "23505" || error.code === "409" || /conflict|duplicate|already/i.test(error.message ?? "");
 }
 function buildMoveDataWithContext(input) {
   const hasContext = Boolean(input.gameId || input.matchInfo);
@@ -117,136 +103,31 @@ function getLaunchContextFromUrl(search = window.location.search) {
   console.log("Launch context recibido:", context);
   return context;
 }
-async function submitByRpc(input) {
-  const rpcName = input.rpcName ?? "register_final_result";
-  const pointsDelta = input.pointsDelta ?? 10;
-  const payloadVariants = [
-    {
-      p_match_id: input.matchId,
-      p_winner_id: input.playerId,
-      p_score_p1: input.score,
-      p_points_delta: pointsDelta
-    },
-    {
-      p_match_id: input.matchId,
-      p_player_id: input.playerId,
-      p_score: input.score,
-      p_points_delta: pointsDelta
-    },
-    {
-      match_id: input.matchId,
-      player_id: input.playerId,
-      score: input.score,
-      points_delta: pointsDelta
-    }
-  ];
-  let lastError = null;
-  for (const payload of payloadVariants) {
-    const { error } = await supabase.rpc(rpcName, payload);
-    if (!error) {
-      return {
-        ok: true,
-        conflict: false,
-        source: "rpc"
-      };
-    }
-    if (isConflictError(error)) {
-      return {
-        ok: true,
-        conflict: true,
-        source: "rpc",
-        error
-      };
-    }
-    lastError = error;
-    console.warn("RPC fall\xF3 con firma de payload", {
-      rpcName,
-      payload,
-      code: error.code,
-      message: error.message,
-      details: error.details,
-      hint: error.hint
-    });
-  }
-  return {
-    ok: false,
-    conflict: false,
-    source: "none",
-    error: lastError
-  };
-}
 async function submitByTable(input) {
   const fallbackTable = input.fallbackTable ?? "match_results";
-  const pointsDelta = input.pointsDelta ?? 10;
-  const { error } = await supabase.from(fallbackTable).insert({
+  const isPvP = input.gameMode === "pvp";
+  const iWon = input.score > 0;
+  const { data: existing } = await supabase.from(fallbackTable).select("final_score_player_1").eq("match_id", input.matchId).eq("winner_id", input.playerId).maybeSingle();
+  if (existing) {
+    return { ok: true, conflict: true, source: "cache" };
+  }
+  const dbPayload = {
     match_id: input.matchId,
-    player_id: input.playerId,
-    score: input.score,
-    points_delta: pointsDelta
-  });
-  if (!error) {
-    return {
-      ok: true,
-      conflict: false,
-      source: "table"
-    };
-  }
-  if (isConflictError(error)) {
-    return {
-      ok: true,
-      conflict: true,
-      source: "table",
-      error
-    };
-  }
-  return {
-    ok: false,
-    conflict: false,
-    source: "none",
-    error
+    winner_id: isPvP ? iWon ? input.playerId : input.opponentId : input.playerId,
+    loser_id: isPvP ? iWon ? input.opponentId : input.playerId : null,
+    final_score_player_1: input.score,
+    points_awarded: isPvP ? Math.abs(input.score) : 0,
+    created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
+  const { error } = await supabase.from(fallbackTable).insert(dbPayload);
+  if (!error) return { ok: true, conflict: false, source: "table" };
+  return { ok: false, conflict: false, source: "none", error };
 }
 async function submitGameResult(input) {
   if (!input.matchId || !input.playerId) {
-    return {
-      ok: false,
-      conflict: false,
-      source: "none",
-      error: new Error("matchId y playerId son obligatorios")
-    };
+    return { ok: false, conflict: false, source: "none", error: new Error("Faltan IDs") };
   }
-  const resultKey = getResultKey(input.matchId, input.playerId);
-  const submittedResults = getSubmittedResults();
-  if (submittedResults.has(resultKey)) {
-    return {
-      ok: true,
-      conflict: false,
-      source: "cache"
-    };
-  }
-  if (inFlightRequests.has(resultKey)) {
-    return {
-      ok: true,
-      conflict: false,
-      source: "cache"
-    };
-  }
-  inFlightRequests.add(resultKey);
-  try {
-    const rpcResult = await submitByRpc(input);
-    if (rpcResult.ok) {
-      markResultSubmitted(resultKey);
-      return rpcResult;
-    }
-    const tableResult = await submitByTable(input);
-    if (tableResult.ok) {
-      markResultSubmitted(resultKey);
-      return tableResult;
-    }
-    return tableResult;
-  } finally {
-    inFlightRequests.delete(resultKey);
-  }
+  return await submitByTable(input);
 }
 async function submitMatchMovement(input) {
   if (!input.matchId || !input.playerId) {
@@ -281,9 +162,79 @@ async function submitMatchMovement(input) {
     table: tableName
   };
 }
+var S_BY_POSITION = { 1: 1, 2: 0.7, 3: 0.3, 4: 0 };
+function expectedScore(rA, rB) {
+  return 1 / (1 + Math.pow(10, (rB - rA) / 400));
+}
+async function submitEloResult(players) {
+  const gameId = players[0].gameId;
+  const userIds = players.map((p) => p.userId);
+  const { data, error } = await supabase.from("scores").select("user_id, score, games_played").in("user_id", userIds);
+  if (error) return { ok: false, error };
+  const eloMap = {};
+  const gamesMap = {};
+  for (const row of data ?? []) {
+    eloMap[row.user_id] = row.score ?? 1e3;
+    gamesMap[row.user_id] = row.games_played ?? 0;
+  }
+  for (const p of players) {
+    if (!(p.userId in eloMap)) {
+      eloMap[p.userId] = 1e3;
+      gamesMap[p.userId] = 0;
+    }
+  }
+  const results = players.map((player) => {
+    const rA = eloMap[player.userId];
+    const gamesA = gamesMap[player.userId];
+    const sA = S_BY_POSITION[player.position] ?? 0;
+    const opponents = players.filter((p) => p.userId !== player.userId);
+    const avgOppElo = opponents.reduce((sum, opp) => sum + eloMap[opp.userId], 0) / opponents.length;
+    const k = avgOppElo - rA > 200 ? 50 : gamesA < 20 ? 40 : 20;
+    const delta = Math.round(
+      opponents.reduce(
+        (sum, opp) => sum + k * (sA - expectedScore(rA, eloMap[opp.userId])),
+        0
+      )
+    );
+    return {
+      userId: player.userId,
+      gameId,
+      oldElo: rA,
+      newElo: rA + delta,
+      delta,
+      gamesPlayed: gamesA + 1
+    };
+  });
+  await Promise.all(
+    results.map(
+      (r) => supabase.from("scores").upsert(
+        { user_id: r.userId, game_id: r.gameId, score: r.newElo, games_played: r.gamesPlayed },
+        { onConflict: "user_id,game_id" }
+      )
+    )
+  );
+  return { ok: true, results };
+}
+async function endMatch(input) {
+  try {
+    const { error } = await supabase.from("matches").update({
+      winner_id: input.winnerId,
+      loser_id: input.loserId,
+      status: input.status ?? "finished",
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    }).eq("id", input.matchId);
+    if (error) return { ok: false, error };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err };
+  }
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  createMatch,
+  endMatch,
   getLaunchContextFromUrl,
+  submitEloResult,
   submitGameResult,
   submitMatchMovement,
   supabase
