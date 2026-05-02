@@ -2,14 +2,16 @@ import { v4 as uuidv4 } from 'uuid';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
-export interface CreateMatchInput {
-    gameId: string;
-    player1: string;
-    player2?: string | null;
-    status?: string;
-    createdAt?: string;
-    updatedAt?: string;
-}
+  export interface CreateMatchInput {                                                                                                             
+      gameId: string;
+      player1: string;                                                                                                                            
+      player2?: string | null;                                      
+      player3?: string | null;                                                                                                                    
+      player4?: string | null;
+      status?: string;                                                                                                                            
+      createdAt?: string;                                           
+      updatedAt?: string;                
+  }
 
 export interface CreateMatchOutput {
     ok: boolean;
@@ -20,25 +22,26 @@ export interface CreateMatchOutput {
 /**
  * Crea un match inicial en la tabla matches y retorna el matchId generado.
  */
-export async function createMatch(input: CreateMatchInput): Promise<CreateMatchOutput> {
-    try {
-        const matchId = uuidv4();
-        const now = new Date().toISOString();
-        const { error } = await supabase.from('matches').insert({
-            id: matchId,
-            game_id: input.gameId,
-            player_1: input.player1,
-            player_2: input.player2,
-            status: input.status ?? 'pending',
-            created_at: now
-            // Eliminado updated_at para evitar errores si no existe
-        });
-        if (error) return { ok: false, error };
-        return { ok: true, matchId };
-    } catch (err) {
-        return { ok: false, error: err as Error };
-    }
-}
+export async function createMatch(input: CreateMatchInput): Promise<CreateMatchOutput> {                                                        
+      try {
+          const matchId = uuidv4();                                                                                                               
+          const now = new Date().toISOString();                                                                                                   
+          const { error } = await supabase.from('matches').insert({
+              id: matchId,                                                                                                                        
+              game_id: input.gameId,                                
+              player_1: input.player1,                                                                                                            
+              player_2: input.player2 ?? null,
+              player_3: input.player3 ?? null,                                                                                                    
+              player_4: input.player4 ?? null,                      
+              status: input.status ?? 'pending',                                                                                                  
+              created_at: now
+          });                                                                                                                                     
+          if (error) return { ok: false, error };                   
+          return { ok: true, matchId };  
+      } catch (err) {
+          return { ok: false, error: err as Error };                                                                                              
+      }
+  }
 
 export interface LaunchContext {
     gameId: string | null;
@@ -283,7 +286,10 @@ export async function submitMatchMovement(
     };
 }
 
-const S_BY_POSITION: Record<number, number> = { 1: 1.0, 2: 0.7, 3: 0.3, 4: 0.0 };
+function sForPosition(position: number, totalPlayers: number): number {
+    if (totalPlayers === 1) return 1;
+    return (totalPlayers - position) / (totalPlayers - 1);
+}
 
 function expectedScore(rA: number, rB: number): number {
     return 1 / (1 + Math.pow(10, (rB - rA) / 400));
@@ -323,7 +329,7 @@ export async function submitEloResult(
     const results = players.map((player) => {
         const rA = eloMap[player.userId];
         const gamesA = gamesMap[player.userId];
-        const sA = S_BY_POSITION[player.position] ?? 0;
+        const sA = sForPosition(player.position, players.length);
         const opponents = players.filter((p) => p.userId !== player.userId);
         const avgOppElo =
             opponents.reduce((sum, opp) => sum + eloMap[opp.userId], 0) / opponents.length;
@@ -364,7 +370,7 @@ export async function submitEloResult(
 export interface EndMatchInput {
     matchId: string;
     winnerId: string;
-    loserId: string;
+    loserId: string | null ;
     status?: string; // e.g. 'finished'
 }
 
