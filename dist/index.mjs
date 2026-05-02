@@ -16,10 +16,11 @@ async function createMatch(input) {
       id: matchId,
       game_id: input.gameId,
       player_1: input.player1,
-      player_2: input.player2,
+      player_2: input.player2 ?? null,
+      player_3: input.player3 ?? null,
+      player_4: input.player4 ?? null,
       status: input.status ?? "pending",
       created_at: now
-      // Eliminado updated_at para evitar errores si no existe
     });
     if (error) return { ok: false, error };
     return { ok: true, matchId };
@@ -130,14 +131,17 @@ async function submitMatchMovement(input) {
     table: tableName
   };
 }
-var S_BY_POSITION = { 1: 1, 2: 0.7, 3: 0.3, 4: 0 };
+function sForPosition(position, totalPlayers) {
+  if (totalPlayers === 1) return 1;
+  return (totalPlayers - position) / (totalPlayers - 1);
+}
 function expectedScore(rA, rB) {
   return 1 / (1 + Math.pow(10, (rB - rA) / 400));
 }
 async function submitEloResult(players) {
   const gameId = players[0].gameId;
   const userIds = players.map((p) => p.userId);
-  const { data, error } = await supabase.from("scores").select("user_id, score, games_played").in("user_id", userIds);
+  const { data, error } = await supabase.from("scores").select("user_id, score, games_played").in("user_id", userIds).eq("game_id", gameId);
   if (error) return { ok: false, error };
   const eloMap = {};
   const gamesMap = {};
@@ -154,7 +158,7 @@ async function submitEloResult(players) {
   const results = players.map((player) => {
     const rA = eloMap[player.userId];
     const gamesA = gamesMap[player.userId];
-    const sA = S_BY_POSITION[player.position] ?? 0;
+    const sA = sForPosition(player.position, players.length);
     const opponents = players.filter((p) => p.userId !== player.userId);
     const avgOppElo = opponents.reduce((sum, opp) => sum + eloMap[opp.userId], 0) / opponents.length;
     const k = avgOppElo - rA > 200 ? 50 : gamesA < 20 ? 40 : 20;
@@ -188,8 +192,7 @@ async function endMatch(input) {
     const { error } = await supabase.from("matches").update({
       winner_id: input.winnerId,
       loser_id: input.loserId,
-      status: input.status ?? "finished",
-      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      status: input.status ?? "finished"
     }).eq("id", input.matchId);
     if (error) return { ok: false, error };
     return { ok: true };

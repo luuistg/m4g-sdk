@@ -308,7 +308,8 @@ export async function submitEloResult(
     const { data, error } = await supabase
         .from('scores')
         .select('user_id, score, games_played')
-        .in('user_id', userIds);
+        .in('user_id', userIds)
+        .eq('game_id', gameId);
 
     if (error) return { ok: false, error };
 
@@ -389,8 +390,7 @@ export async function endMatch(input: EndMatchInput): Promise<EndMatchOutput> {
             .update({
                 winner_id: input.winnerId,
                 loser_id: input.loserId,
-                status: input.status ?? 'finished',
-                updated_at: new Date().toISOString()
+                status: input.status ?? 'finished'
             })
             .eq('id', input.matchId);
         if (error) return { ok: false, error };

@@ -5,6 +5,8 @@ interface CreateMatchInput {
     gameId: string;
     player1: string;
     player2?: string | null;
+    player3?: string | null;
+    player4?: string | null;
     status?: string;
     createdAt?: string;
     updatedAt?: string;
@@ -80,7 +82,7 @@ declare function submitEloResult(players: Array<{
 interface EndMatchInput {
     matchId: string;
     winnerId: string;
-    loserId: string;
+    loserId: string | null;
     status?: string;
 }
 interface EndMatchOutput {
