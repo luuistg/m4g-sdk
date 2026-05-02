@@ -1,6 +1,6 @@
 {
   "name": "m4g-sdk",
-  "version": "3.0.4",
+  "version": "3.0.5",
   "description": "SDK para integración de resultados y contexto de juego con Supabase",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
