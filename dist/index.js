@@ -222,7 +222,13 @@ async function submitEloResult(players) {
 }
 async function updateMatch(input) {
   try {
-    const { error } = await supabase.from("matches").update({ status: input.status, updated_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", input.matchId);
+    const fields = { updated_at: (/* @__PURE__ */ new Date()).toISOString() };
+    if (input.status !== void 0) fields.status = input.status;
+    if (input.player1 !== void 0) fields.player_1 = input.player1;
+    if (input.player2 !== void 0) fields.player_2 = input.player2;
+    if (input.player3 !== void 0) fields.player_3 = input.player3;
+    if (input.player4 !== void 0) fields.player_4 = input.player4;
+    const { error } = await supabase.from("matches").update(fields).eq("id", input.matchId);
     if (error) return { ok: false, error };
     return { ok: true };
   } catch (err) {

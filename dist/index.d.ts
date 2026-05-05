@@ -81,7 +81,11 @@ declare function submitEloResult(players: Array<{
 }>;
 interface UpdateMatchInput {
     matchId: string;
-    status: string;
+    status?: string;
+    player1?: string | null;
+    player2?: string | null;
+    player3?: string | null;
+    player4?: string | null;
 }
 interface UpdateMatchOutput {
     ok: boolean;

@@ -370,7 +370,11 @@ export async function submitEloResult(
 
 export interface UpdateMatchInput {
     matchId: string;
-    status: string;
+    status?: string;
+    player1?: string | null;
+    player2?: string | null;
+    player3?: string | null;
+    player4?: string | null;
 }
 
 export interface UpdateMatchOutput {
@@ -380,9 +384,16 @@ export interface UpdateMatchOutput {
 
 export async function updateMatch(input: UpdateMatchInput): Promise<UpdateMatchOutput> {
     try {
+        const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (input.status   !== undefined) fields.status   = input.status;
+        if (input.player1  !== undefined) fields.player_1 = input.player1;
+        if (input.player2  !== undefined) fields.player_2 = input.player2;
+        if (input.player3  !== undefined) fields.player_3 = input.player3;
+        if (input.player4  !== undefined) fields.player_4 = input.player4;
+
         const { error } = await supabase
             .from('matches')
-            .update({ status: input.status, updated_at: new Date().toISOString() })
+            .update(fields)
             .eq('id', input.matchId);
         if (error) return { ok: false, error };
         return { ok: true };
