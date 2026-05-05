@@ -368,6 +368,29 @@ export async function submitEloResult(
     return { ok: true, results };
 }
 
+export interface UpdateMatchInput {
+    matchId: string;
+    status: string;
+}
+
+export interface UpdateMatchOutput {
+    ok: boolean;
+    error?: Error | null;
+}
+
+export async function updateMatch(input: UpdateMatchInput): Promise<UpdateMatchOutput> {
+    try {
+        const { error } = await supabase
+            .from('matches')
+            .update({ status: input.status, updated_at: new Date().toISOString() })
+            .eq('id', input.matchId);
+        if (error) return { ok: false, error };
+        return { ok: true };
+    } catch (err) {
+        return { ok: false, error: err as Error };
+    }
+}
+
 export interface EndMatchInput {
     matchId: string;
     winnerId: string;
@@ -390,7 +413,8 @@ export async function endMatch(input: EndMatchInput): Promise<EndMatchOutput> {
             .update({
                 winner_id: input.winnerId,
                 loser_id: input.loserId,
-                status: input.status ?? 'finished'
+                status: input.status ?? 'finished',
+                updated_at: new Date().toISOString()
             })
             .eq('id', input.matchId);
         if (error) return { ok: false, error };

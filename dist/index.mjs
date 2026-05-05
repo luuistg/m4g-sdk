@@ -187,12 +187,22 @@ async function submitEloResult(players) {
   );
   return { ok: true, results };
 }
+async function updateMatch(input) {
+  try {
+    const { error } = await supabase.from("matches").update({ status: input.status, updated_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", input.matchId);
+    if (error) return { ok: false, error };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err };
+  }
+}
 async function endMatch(input) {
   try {
     const { error } = await supabase.from("matches").update({
       winner_id: input.winnerId,
       loser_id: input.loserId,
-      status: input.status ?? "finished"
+      status: input.status ?? "finished",
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
     }).eq("id", input.matchId);
     if (error) return { ok: false, error };
     return { ok: true };
@@ -207,5 +217,6 @@ export {
   submitEloResult,
   submitGameResult,
   submitMatchMovement,
-  supabase
+  supabase,
+  updateMatch
 };

@@ -79,6 +79,15 @@ declare function submitEloResult(players: Array<{
     }>;
     error?: any;
 }>;
+interface UpdateMatchInput {
+    matchId: string;
+    status: string;
+}
+interface UpdateMatchOutput {
+    ok: boolean;
+    error?: Error | null;
+}
+declare function updateMatch(input: UpdateMatchInput): Promise<UpdateMatchOutput>;
 interface EndMatchInput {
     matchId: string;
     winnerId: string;
@@ -96,4 +105,4 @@ declare function endMatch(input: EndMatchInput): Promise<EndMatchOutput>;
 
 declare const supabase: _supabase_supabase_js.SupabaseClient<any, "public", "public", any, any>;
 
-export { type CreateMatchInput, type CreateMatchOutput, type EndMatchInput, type EndMatchOutput, type GameMode, type LaunchContext, type SubmitGameResultInput, type SubmitGameResultOutput, type SubmitMatchMovementInput, type SubmitMatchMovementOutput, createMatch, endMatch, getLaunchContextFromUrl, submitEloResult, submitGameResult, submitMatchMovement, supabase };
+export { type CreateMatchInput, type CreateMatchOutput, type EndMatchInput, type EndMatchOutput, type GameMode, type LaunchContext, type SubmitGameResultInput, type SubmitGameResultOutput, type SubmitMatchMovementInput, type SubmitMatchMovementOutput, type UpdateMatchInput, type UpdateMatchOutput, createMatch, endMatch, getLaunchContextFromUrl, submitEloResult, submitGameResult, submitMatchMovement, supabase, updateMatch };
